@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/render"
@@ -49,7 +50,8 @@ GET /song/history
 Returns all Songs that have been recommended, paginated
 */
 func getSongHistory(*sql.DB) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	})
 }
 
 /*
@@ -58,7 +60,14 @@ Creates a new Song recommendation
 Only accessible by admins
 */
 func createSong(*sql.DB) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var songLink string
+		err := json.NewDecoder(r.Body).Decode(&songLink)
+		if err != nil {
+			render.Render(w, r, ErrRender(err))
+			return
+		}
+	})
 }
 
 /*
