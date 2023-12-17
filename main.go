@@ -1,12 +1,20 @@
 package main
 
 import (
+	"log"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 
 func main() {
+
+	err := loadEnv(".env")
+	if err != nil {
+		log.Fatalf("Error loading .env: %v", err)
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
