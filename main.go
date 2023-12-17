@@ -1,5 +1,9 @@
 package main
 
+/*
+Sets up environment variables, database connection, and routes
+*/
+
 import (
 	"log"
 
@@ -27,5 +31,12 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
+
+	r.Route("/song", func(r chi.Router) {
+		r.Get("/", getSong(db))
+		r.Post("/", createSong(db))
+		r.Get("/history", getSongHistory(db))
+		r.Post("/submit", submitSong(db))
+	})
 
 }
