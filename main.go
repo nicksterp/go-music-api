@@ -15,6 +15,11 @@ func main() {
 		log.Fatalf("Error loading .env: %v", err)
 	}
 
+	db, err := connectToDB()
+	if err != nil {
+		log.Fatalf("Error connecting to DB: %v", err)
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
