@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -53,7 +54,7 @@ func getSong(db *sql.DB) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var song Song
 
-		err := db.QueryRow("SELECT * FROM songs ORDER BY id DESC LIMIT 1").Scan(&song.ID, &song.Title, &song.Artist, &song.ImageURL, &song.SubmittedAt, &song.SongURL, &song.Platform)
+		err := db.QueryRow("SELECT * FROM song ORDER BY id DESC LIMIT 1").Scan(&song.ID, &song.Title, &song.Artist, &song.ImageURL, &song.SubmittedAt, &song.SongURL, &song.Platform)
 
 		if err == sql.ErrNoRows {
 			render.Render(w, r, ErrNotFound)
@@ -61,7 +62,8 @@ func getSong(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err != nil {
-			render.Render(w, r, ErrRender(err))
+			log.Println(err)
+			render.Render(w, r, ErrServer)
 			return
 		}
 
@@ -92,7 +94,8 @@ func createSong(db *sql.DB) http.HandlerFunc {
 		var songReq SongRequest
 		err := json.NewDecoder(r.Body).Decode(&songReq)
 		if err != nil {
-			render.Render(w, r, ErrRender(err))
+			log.Println("Error decoding song request:", err)
+			render.Render(w, r, ErrServer)
 			return
 		}
 
@@ -105,7 +108,8 @@ func createSong(db *sql.DB) http.HandlerFunc {
 			// Parse link for song ID
 			u, err := url.Parse(songReq.SongLink)
 			if err != nil {
-				render.Render(w, r, ErrRender(err))
+				log.Println("Error parsing song link:", err)
+				render.Render(w, r, ErrServer)
 				return
 			}
 			songID := ""
@@ -123,7 +127,8 @@ func createSong(db *sql.DB) http.HandlerFunc {
 			// Create a new HTTP request to the Spotify API endpoint for getting track details
 			req, err := http.NewRequest("GET", "https://api.spotify.com/v1/tracks/"+songID, nil)
 			if err != nil {
-				render.Render(w, r, ErrRender(err))
+				log.Println("Error creating Spotify API request:", err)
+				render.Render(w, r, ErrServer)
 				return
 			}
 
@@ -131,30 +136,60 @@ func createSong(db *sql.DB) http.HandlerFunc {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
-				render.Render(w, r, ErrRender(err))
+				log.Println("Error sending Spotify API request:", err)
+				render.Render(w, r, ErrServer)
 				return
 			}
 			defer resp.Body.Close()
 
 			// Decode the response body into a map
 			var result map[string]interface{}
-			json.NewDecoder(resp.Body).Decode(&result)
+			err = json.NewDecoder(resp.Body).Decode(&result)
+			if err != nil {
+				log.Println("Error decoding Spotify API response:", err)
+				render.Render(w, r, ErrServer)
+				return
+			}
 
-			// Create a new Song object and fill the fields with the data from the response
+			var title, artist, imageURL string
+
+			if name, ok := result["name"].(string); ok {
+				title = name
+			}
+
+			if artists, ok := result["artists"].([]interface{}); ok && len(artists) > 0 {
+				if artistData, ok := artists[0].(map[string]interface{}); ok {
+					if name, ok := artistData["name"].(string); ok {
+						artist = name
+					}
+				}
+			}
+
+			if album, ok := result["album"].(map[string]interface{}); ok {
+				if images, ok := album["images"].([]interface{}); ok && len(images) > 0 {
+					if imageData, ok := images[0].(map[string]interface{}); ok {
+						if url, ok := imageData["url"].(string); ok {
+							imageURL = url
+						}
+					}
+				}
+			}
+
 			song := Song{
-				ID:          nil,
-				Title:       result["name"].(string),
-				Artist:      result["artists"].([]interface{})[0].(map[string]interface{})["name"].(string),
-				ImageURL:    result["album"].(map[string]interface{})["images"].([]interface{})[0].(map[string]interface{})["url"].(string),
-				SubmittedAt: time.Now().Truncate(24 * time.Hour), // Set the current time in RFC3339 format
-				SongURL:     songReq.SongLink,                    // Assuming this is the correct value
-				Platform:    "Spotify",                           // Assuming this is the correct value
+				ID:          nil, // Make sure this is the intended behavior
+				Title:       title,
+				Artist:      artist,
+				ImageURL:    imageURL,
+				SubmittedAt: time.Now().Truncate(24 * time.Hour),
+				SongURL:     songReq.SongLink, // Ensure songReq.SongLink is defined and valid
+				Platform:    "Spotify",
 			}
 
 			// Prepare SQL statement
-			stmt, err := db.Prepare("INSERT INTO Song(Title, Artist, ImageURL, SubmittedAt, SongURL, Platform) VALUES(?, ?, ?, ?, ?, ?)")
+			stmt, err := db.Prepare("INSERT INTO Song(title, artist, image_url, submitted_at, song_url, platform) VALUES($1, $2, $3, $4, $5, $6)")
 			if err != nil {
-				render.Render(w, r, ErrRender(err))
+				log.Println("Error preparing SQL statement:", err)
+				render.Render(w, r, ErrServer)
 				return
 			}
 			defer stmt.Close()
@@ -162,7 +197,8 @@ func createSong(db *sql.DB) http.HandlerFunc {
 			// Execute SQL statement
 			_, err = stmt.Exec(song.Title, song.Artist, song.ImageURL, song.SubmittedAt, song.SongURL, song.Platform)
 			if err != nil {
-				render.Render(w, r, ErrRender(err))
+				log.Println("Error executing SQL statement:", err)
+				render.Render(w, r, ErrServer)
 				return
 			}
 
@@ -218,3 +254,4 @@ func ErrRender(err error) render.Renderer {
 
 var ErrNotFound = &ErrResponse{HTTPStatusCode: 404, StatusText: "Resource not found."}
 var ErrUnauthorized = &ErrResponse{HTTPStatusCode: 401, StatusText: "Unauthorized."}
+var ErrServer = &ErrResponse{HTTPStatusCode: 500, StatusText: "Server error."}

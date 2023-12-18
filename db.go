@@ -19,7 +19,14 @@ func connectToDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+
+	// Validate connection
+	err = db.Ping()
+	if err != nil {
+		// Close the database connection if Ping fails
+		db.Close()
+		return nil, err
+	}
 
 	return db, nil
 }
@@ -29,7 +36,6 @@ type DBVars struct {
 	user string
 	pass string
 	name string
-	env  string
 }
 
 func createDBStr() (string, error) {
@@ -38,20 +44,14 @@ func createDBStr() (string, error) {
 		user: os.Getenv("DB_USER"),
 		pass: os.Getenv("DB_PASS"),
 		name: os.Getenv("DB_NAME"),
-		env:  os.Getenv("ENV"),
 	}
 
 	// If any of the variables are empty, return an error
-	if vars.host == "" || vars.user == "" || vars.pass == "" || vars.name == "" || vars.env == "" {
+	if vars.host == "" || vars.user == "" || vars.pass == "" || vars.name == "" {
 		return "", errors.New("missing DB variable")
 	}
 
 	connStr := fmt.Sprintf("postgres://%s:%s@%s/%s", vars.user, vars.pass, vars.host, vars.name)
-
-	// Default to dev environment, append ?sslmode=disable
-	if vars.env != "prod" {
-		connStr += "?sslmode=disable"
-	}
 
 	return connStr, nil
 }
