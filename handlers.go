@@ -39,6 +39,10 @@ type Song struct {
 	Platform    string    `json:"platform"`
 }
 
+type SongRequest struct {
+	SongLink string `json:"songLink"`
+}
+
 // HANDLERS
 
 /*
@@ -79,24 +83,27 @@ POST /song
 Creates a new Song recommendation
 Only accessible by admins
 currently supports only Spotify links
+
+Headers: "Authorization: API_TOKEN"
+Body: {}
 */
 func createSong(db *sql.DB) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var songLink string
-		err := json.NewDecoder(r.Body).Decode(&songLink)
+		var songReq SongRequest
+		err := json.NewDecoder(r.Body).Decode(&songReq)
 		if err != nil {
 			render.Render(w, r, ErrRender(err))
 			return
 		}
 
 		// Check provider (Soundcloud, Spotify, Youtube) from the link and parse accordingly
-		if strings.Contains(songLink, "soundcloud.com") {
+		if strings.Contains(songReq.SongLink, "soundcloud.com") {
 			// UNSUPPORTED: Soundcloud not releasing API keys at this time
 			render.Render(w, r, ErrInvalidRequest(errors.New("unsupported provider")))
 			return
-		} else if strings.Contains(songLink, "spotify.com") {
+		} else if strings.Contains(songReq.SongLink, "spotify.com") {
 			// Parse link for song ID
-			u, err := url.Parse(songLink)
+			u, err := url.Parse(songReq.SongLink)
 			if err != nil {
 				render.Render(w, r, ErrRender(err))
 				return
@@ -140,7 +147,7 @@ func createSong(db *sql.DB) http.HandlerFunc {
 				Artist:      result["artists"].([]interface{})[0].(map[string]interface{})["name"].(string),
 				ImageURL:    result["album"].(map[string]interface{})["images"].([]interface{})[0].(map[string]interface{})["url"].(string),
 				SubmittedAt: time.Now().Truncate(24 * time.Hour), // Set the current time in RFC3339 format
-				SongURL:     songLink,                            // Assuming this is the correct value
+				SongURL:     songReq.SongLink,                    // Assuming this is the correct value
 				Platform:    "Spotify",                           // Assuming this is the correct value
 			}
 
@@ -171,7 +178,9 @@ POST /song/submit
 Allows user to submit a song recommendation, rate limited
 */
 func submitSong(*sql.DB) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	})
 }
 
 // ERRORS
