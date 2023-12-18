@@ -3,10 +3,28 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/go-chi/render"
 )
+
+// AUTH MIDDLEWARE
+func TokenAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secret := os.Getenv("API_TOKEN") // Get the token from the environment variable
+		token := r.Header.Get("Authorization")
+
+		if token != secret {
+			render.Render(w, r, ErrUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 
 // STRUCTS
 type Song struct {
@@ -67,6 +85,16 @@ func createSong(*sql.DB) http.HandlerFunc {
 			render.Render(w, r, ErrRender(err))
 			return
 		}
+
+		// Check provider (Soundcloud, Spotify, Youtube) from the link and parse accordingly
+		if strings.Contains(songLink, "soundcloud.com") {
+			//TODO: implement soundcloud api fetch
+		} else if strings.Contains(songLink, "spotify.com") {
+			//TODO: Implement spotify api fetch
+		} else {
+			render.Render(w, r, ErrInvalidRequest(errors.New("Invalid provider")))
+			return
+		}
 	})
 }
 
@@ -112,3 +140,4 @@ func ErrRender(err error) render.Renderer {
 }
 
 var ErrNotFound = &ErrResponse{HTTPStatusCode: 404, StatusText: "Resource not found."}
+var ErrUnauthorized = &ErrResponse{HTTPStatusCode: 401, StatusText: "Unauthorized."}

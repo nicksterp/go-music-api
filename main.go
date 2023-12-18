@@ -34,7 +34,7 @@ func main() {
 
 	r.Route("/song", func(r chi.Router) {
 		r.Get("/", getSong(db))
-		r.Post("/", createSong(db))
+		r.With(TokenAuthMiddleware).Post("/", createSong(db))
 		r.Get("/history", getSongHistory(db))
 		r.Post("/submit", submitSong(db))
 	})
