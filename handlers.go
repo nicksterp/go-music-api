@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/render"
 )
@@ -28,13 +30,13 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 
 // STRUCTS
 type Song struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
-	Artist      string `json:"artist"`
-	ImageURL    string `json:"image_url"`
-	SubmittedAt string `json:"submitted_at"`
-	SongURL     string `json:"song_url"`
-	Platform    string `json:"platform"`
+	ID          *int      `json:"id"`
+	Title       string    `json:"title"`
+	Artist      string    `json:"artist"`
+	ImageURL    string    `json:"image_url"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	SongURL     string    `json:"song_url"`
+	Platform    string    `json:"platform"`
 }
 
 // HANDLERS
@@ -76,8 +78,9 @@ func getSongHistory(*sql.DB) http.HandlerFunc {
 POST /song
 Creates a new Song recommendation
 Only accessible by admins
+currently supports only Spotify links
 */
-func createSong(*sql.DB) http.HandlerFunc {
+func createSong(db *sql.DB) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var songLink string
 		err := json.NewDecoder(r.Body).Decode(&songLink)
@@ -88,11 +91,76 @@ func createSong(*sql.DB) http.HandlerFunc {
 
 		// Check provider (Soundcloud, Spotify, Youtube) from the link and parse accordingly
 		if strings.Contains(songLink, "soundcloud.com") {
-			//TODO: implement soundcloud api fetch
+			// UNSUPPORTED: Soundcloud not releasing API keys at this time
+			render.Render(w, r, ErrInvalidRequest(errors.New("unsupported provider")))
+			return
 		} else if strings.Contains(songLink, "spotify.com") {
-			//TODO: Implement spotify api fetch
+			// Parse link for song ID
+			u, err := url.Parse(songLink)
+			if err != nil {
+				render.Render(w, r, ErrRender(err))
+				return
+			}
+			songID := ""
+			pathParts := strings.Split(u.Path, "/")
+			for i, part := range pathParts {
+				if part == "track" && i+1 < len(pathParts) {
+					songID = strings.Split(pathParts[i+1], "?")[0]
+				}
+			}
+			if songID == "" {
+				render.Render(w, r, ErrInvalidRequest(errors.New("Song ID not found")))
+				return
+			}
+
+			// Create a new HTTP request to the Spotify API endpoint for getting track details
+			req, err := http.NewRequest("GET", "https://api.spotify.com/v1/tracks/"+songID, nil)
+			if err != nil {
+				render.Render(w, r, ErrRender(err))
+				return
+			}
+
+			// Send the request and get the response
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				render.Render(w, r, ErrRender(err))
+				return
+			}
+			defer resp.Body.Close()
+
+			// Decode the response body into a map
+			var result map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&result)
+
+			// Create a new Song object and fill the fields with the data from the response
+			song := Song{
+				ID:          nil,
+				Title:       result["name"].(string),
+				Artist:      result["artists"].([]interface{})[0].(map[string]interface{})["name"].(string),
+				ImageURL:    result["album"].(map[string]interface{})["images"].([]interface{})[0].(map[string]interface{})["url"].(string),
+				SubmittedAt: time.Now().Truncate(24 * time.Hour), // Set the current time in RFC3339 format
+				SongURL:     songLink,                            // Assuming this is the correct value
+				Platform:    "Spotify",                           // Assuming this is the correct value
+			}
+
+			// Prepare SQL statement
+			stmt, err := db.Prepare("INSERT INTO Song(Title, Artist, ImageURL, SubmittedAt, SongURL, Platform) VALUES(?, ?, ?, ?, ?, ?)")
+			if err != nil {
+				render.Render(w, r, ErrRender(err))
+				return
+			}
+			defer stmt.Close()
+
+			// Execute SQL statement
+			_, err = stmt.Exec(song.Title, song.Artist, song.ImageURL, song.SubmittedAt, song.SongURL, song.Platform)
+			if err != nil {
+				render.Render(w, r, ErrRender(err))
+				return
+			}
+
 		} else {
-			render.Render(w, r, ErrInvalidRequest(errors.New("Invalid provider")))
+			render.Render(w, r, ErrInvalidRequest(errors.New("invalid provider")))
 			return
 		}
 	})
