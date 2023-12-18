@@ -85,7 +85,7 @@ Only accessible by admins
 currently supports only Spotify links
 
 Headers: "Authorization: API_TOKEN"
-Body: {}
+Body: {"songLink": "SPOTIFY_SONG_LINK"}
 */
 func createSong(db *sql.DB) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,9 +175,9 @@ func createSong(db *sql.DB) http.HandlerFunc {
 
 /*
 POST /song/submit
-Allows user to submit a song recommendation, rate limited
+Allows user to submit a song recommendation, requires solved captcha
 */
-func submitSong(*sql.DB) http.HandlerFunc {
+func submitSong(*sql.DB) http.HandlerFunc { //TODO: Implement
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 	})
