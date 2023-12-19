@@ -76,8 +76,36 @@ func getSong(db *sql.DB) http.HandlerFunc {
 GET /song/history
 Returns all Songs that have been recommended, paginated
 */
-func getSongHistory(*sql.DB) http.HandlerFunc {
+func getSongHistory(db *sql.DB) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var songs []Song
+
+		rows, err := db.Query("SELECT * FROM song ORDER BY submitted_at DESC")
+		if err != nil {
+			log.Println(err)
+			render.Render(w, r, ErrServer)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var song Song
+			err := rows.Scan(&song.ID, &song.Title, &song.Artist, &song.ImageURL, &song.SubmittedAt, &song.SongURL, &song.Platform)
+			if err != nil {
+				log.Println(err)
+				render.Render(w, r, ErrServer)
+				return
+			}
+			songs = append(songs, song)
+		}
+
+		if err = rows.Err(); err != nil {
+			log.Println(err)
+			render.Render(w, r, ErrServer)
+			return
+		}
+
+		render.JSON(w, r, songs)
 	})
 }
 
@@ -206,6 +234,12 @@ func createSong(db *sql.DB) http.HandlerFunc {
 				render.Render(w, r, ErrServer)
 				return
 			}
+
+			// Return a 200 with parsed song information
+			render.Render(w, r, &ErrResponse{
+				HTTPStatusCode: 200,
+				StatusText:     "OK",
+			})
 
 		} else {
 			render.Render(w, r, ErrInvalidRequest(errors.New("invalid provider")))
