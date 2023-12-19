@@ -1,0 +1,16 @@
+version: '3'
+services:
+
+  go-music-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 443:443
+    restart: unless-stopped
+    command: ["/go-music-api"]
+    secrets:
+      - env
+secrets:
+  env:
+    file: .env

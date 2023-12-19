@@ -15,9 +15,9 @@ import (
 
 func main() {
 
-	err := loadEnv(".env")
+	err := loadEnv("/run/secrets/env")
 	if err != nil {
-		log.Fatalf("Error loading .env: %v", err)
+		log.Fatalf("Error loading env vars: %v", err)
 	}
 
 	db, err := connectToDB()
