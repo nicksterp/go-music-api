@@ -156,9 +156,6 @@ func createSong(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			// TODO: Remove log
-			log.Println(result)
-
 			var title, artist, imageURL string
 
 			if name, ok := result["name"].(string); ok {
