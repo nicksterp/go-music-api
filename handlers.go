@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -132,6 +133,10 @@ func createSong(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
+			// Add Authorization header to the request
+			refreshSpotifyToken()
+			req.Header.Add("Authorization", "Bearer "+os.Getenv("SPOTIFY_ACCESS_TOKEN"))
+
 			// Send the request and get the response
 			client := &http.Client{}
 			resp, err := client.Do(req)
@@ -150,6 +155,9 @@ func createSong(db *sql.DB) http.HandlerFunc {
 				render.Render(w, r, ErrServer)
 				return
 			}
+
+			// TODO: Remove log
+			log.Println(result)
 
 			var title, artist, imageURL string
 
@@ -255,3 +263,53 @@ func ErrRender(err error) render.Renderer {
 var ErrNotFound = &ErrResponse{HTTPStatusCode: 404, StatusText: "Resource not found."}
 var ErrUnauthorized = &ErrResponse{HTTPStatusCode: 401, StatusText: "Unauthorized."}
 var ErrServer = &ErrResponse{HTTPStatusCode: 500, StatusText: "Server error."}
+
+// SPOTIFY AUTH TOKEN HELPER
+func refreshSpotifyToken() {
+	clientID := os.Getenv("SPOTIFY_CLIENT_ID")
+	clientSecret := os.Getenv("SPOTIFY_CLIENT_SECRET")
+	tokenURL := "https://accounts.spotify.com/api/token"
+
+	// Check if token is already set and still valid
+	if token, expiry := os.Getenv("SPOTIFY_ACCESS_TOKEN"), os.Getenv("SPOTIFY_TOKEN_EXPIRY"); token != "" && expiry != "" {
+		expiryTime, err := time.Parse(time.RFC3339, expiry)
+		if err == nil && time.Now().Before(expiryTime) {
+			return
+		}
+	}
+
+	// Request new token
+	form := url.Values{}
+	form.Add("grant_type", "client_credentials")
+	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		log.Println("Error creating Spotify API request:", err)
+		return
+	}
+	req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(clientID+":"+clientSecret)))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("Error sending Spotify API request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Decode the response body into a map
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		log.Println("Error decoding Spotify API response:", err)
+		return
+	}
+
+	// Set new token and expiry
+	if accessToken, ok := result["access_token"].(string); ok {
+		os.Setenv("SPOTIFY_ACCESS_TOKEN", accessToken)
+		if expiresIn, ok := result["expires_in"].(float64); ok {
+			expiry := time.Now().Add(time.Duration(expiresIn) * time.Second).Format(time.RFC3339)
+			os.Setenv("SPOTIFY_TOKEN_EXPIRY", expiry)
+		}
+	}
+}
